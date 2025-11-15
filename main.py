@@ -1,8 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional
 
-app = FastAPI()
+from database import create_document
+from schemas import Inquiry
+
+app = FastAPI(title="Flames Services Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,7 +38,6 @@ def test_database():
     }
     
     try:
-        # Try to import database module
         from database import db
         
         if db is not None:
@@ -42,10 +46,9 @@ def test_database():
             response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
             response["connection_status"] = "Connected"
             
-            # Try to list collections to verify connectivity
             try:
                 collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
+                response["collections"] = collections[:10]
                 response["database"] = "✅ Connected & Working"
             except Exception as e:
                 response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
@@ -57,12 +60,32 @@ def test_database():
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:50]}"
     
-    # Check environment variables
     import os
     response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
     
     return response
+
+# Lead capture endpoint
+class InquiryIn(BaseModel):
+    name: str
+    email: EmailStr
+    company: Optional[str] = None
+    industry: Optional[str] = None
+    services: Optional[List[str]] = None
+    message: Optional[str] = None
+    budget: Optional[str] = None
+    timeline: Optional[str] = None
+    source: Optional[str] = None
+
+@app.post("/api/inquiries")
+def create_inquiry(payload: InquiryIn):
+    try:
+        inquiry = Inquiry(**payload.model_dump())
+        inserted_id = create_document("inquiry", inquiry)
+        return {"status": "ok", "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
